@@ -1,5 +1,7 @@
 from flask import Flask, render_template_string, request
 import requests
+import io
+import pandas as pd
 
 app = Flask(__name__)
 
@@ -117,22 +119,36 @@ HTML = '''
       min-width: 0;
       flex: 1 1 0%;
     }
+    .header-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    main.flex-grow-1.d-flex.flex-column {
+      flex: 1 1 0%;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
     .content-header {
-      font-size: 1.1rem;
-      font-weight: 600;
+      position: sticky;
+      top: 48px; /* height of .header-bar */
+      z-index: 99;
+      background: var(--bs-body-bg);
       padding: 16px 16px 0 16px;
-      color: var(--bs-primary);
-      font-size: 13px;
     }
     .messages {
-      flex: 1;
-      padding: 12px;
+      flex: 1 1 0%;
+      min-height: 0;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 12px;
-      min-height: 0;
-      font-size: 13px;
+      padding: 12px;
+      background: none;
+      /* smooth scroll */
+      scroll-behavior: smooth;
     }
     .message {
       background: var(--bs-info-bg-subtle);
@@ -163,6 +179,53 @@ HTML = '''
     .sidebar-toggle-btn i {
       font-size: 1.3rem;
       vertical-align: middle;
+    }
+    .diff-cell { background: #ffe066 !important; }
+    .excel-table { font-size: 13px; border-collapse: collapse; margin-bottom: 24px; }
+    .excel-table th, .excel-table td {
+      border: 1px solid #bbb;
+      padding: 4px 8px;
+      text-align: left;
+      white-space: nowrap;
+      max-width: 400px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .excel-table td {
+      word-break: break-all;
+      cursor: pointer;
+    }
+    .excel-table th {
+      background: #f1f3f4;
+      font-weight: 700;
+    }
+    .excel-table td {
+      word-break: break-all;
+    }
+    .excel-table-wrapper {
+      overflow-x: auto;
+      width: 100%;
+    }
+    @media (min-width: 768px) {
+      .compare-row {
+        display: flex;
+        flex-direction: row;
+        gap: 16px;
+      }
+      .compare-col {
+        flex: 1 1 0;
+        min-width: 0;
+      }
+    }
+    @media (max-width: 767.98px) {
+      .compare-row {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .compare-col {
+        width: 100%;
+      }
     }
     @media (max-width: 991.98px) { /* Bootstrap md breakpoint */
       .d-flex.flex-row.h-100 {
@@ -268,6 +331,36 @@ HTML = '''
         display: inline-block !important;
       }
     }
+    /* Dark mode: cải thiện màu header card/bảng */
+    [data-bs-theme="dark"] .card-header.bg-primary {
+      background-color: #1976d2 !important; /* Deep blue */
+      color: #fff !important;
+      border-bottom: 1px solid #1565c0;
+    }
+    [data-bs-theme="dark"] .card-header.bg-success {
+      background-color: #388e3c !important; /* Deep green */
+      color: #fff !important;
+      border-bottom: 1px solid #2e7031;
+    }
+    [data-bs-theme="dark"] .excel-table th {
+      background: #263238 !important; /* Blue-grey dark */
+      color: #fff !important;
+      border-bottom: 1px solid #37474f;
+    }
+    [data-bs-theme="dark"] .excel-table td {
+      background: #181c20;
+      color: #e0e0e0;
+    }
+    /* Optional: subtle border for card in dark mode */
+    [data-bs-theme="dark"] .card {
+      border: 1.5px solid #37474f;
+      background: #23272b;
+    }
+    /* Optional: make diff-cell more visible in dark mode */
+    [data-bs-theme="dark"] .diff-cell {
+      background: #ffe066cc !important;
+      color: #222 !important;
+    }
   </style>
   <script>
     let sidebarVisible = true;
@@ -367,8 +460,65 @@ HTML = '''
         <main class="flex-grow-1 d-flex flex-column">
           <div class="content-header">Kết quả so sánh</div>
           <div class="messages">
-            {% if diff %}
-              <div class="message">{{ diff }}</div>
+            {% if table1 and table2 %}
+              <div class="mt-2"><b>Chi tiết các ô khác nhau:</b></div>
+              <ul style="font-size:13px;">
+                {% for d in diffs %}
+                  <li>Dòng {{ d.row }}, cột '{{ d.column }}': File 1 = '{{ d.value1 }}', File 2 = '{{ d.value2 }}'</li>
+                {% endfor %}
+              </ul>
+              <div class="compare-row mt-3">
+                <div class="compare-col">
+                  <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-primary text-white"><b>File 1</b></div>
+                    <div class="card-body p-2 excel-table-wrapper">
+                      <table class="excel-table w-100">
+                        <thead>
+                          <tr>
+                            {% for col in columns %}<th>{{ col }}</th>{% endfor %}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for row_idx in range(table1|length) %}
+                            <tr>
+                              {% for col in columns %}
+                                {% set cell_diff = (row_idx, col) in diff_cells %}
+                                <td class="{% if cell_diff %}diff-cell{% endif %}" title="{{ table1[row_idx][col] }}">{{ table1[row_idx][col] }}</td>
+                              {% endfor %}
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+                <div class="compare-col">
+                  <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-success text-white"><b>File 2</b></div>
+                    <div class="card-body p-2 excel-table-wrapper">
+                      <table class="excel-table w-100">
+                        <thead>
+                          <tr>
+                            {% for col in columns %}<th>{{ col }}</th>{% endfor %}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for row_idx in range(table2|length) %}
+                            <tr>
+                              {% for col in columns %}
+                                {% set cell_diff = (row_idx, col) in diff_cells %}
+                                <td class="{% if cell_diff %}diff-cell{% endif %}" title="{{ table2[row_idx][col] }}">{{ table2[row_idx][col] }}</td>
+                              {% endfor %}
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% elif diff_error %}
+              <div class="message bg-danger text-light">{{ diff_error }}</div>
             {% else %}
               <div class="message" style="background:var(--bs-light); color:var(--bs-primary); font-weight:600; border:1px solid var(--bs-primary);">Hãy tải lên hai file Excel để so sánh nội dung, giống như trò chuyện với ChatGPT!</div>
             {% endif %}
@@ -385,15 +535,23 @@ BACKEND_URL = 'http://localhost:5000/api/compare'
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    diff = None
+    table1 = table2 = columns = diffs = diff_cells = diff_error = None
     if request.method == 'POST':
         files = {'file1': request.files['file1'], 'file2': request.files['file2']}
         try:
             resp = requests.post(BACKEND_URL, files=files)
-            diff = resp.text
+            result = resp.json()
+            if 'error' in result:
+                diff_error = result['error']
+            else:
+                table1 = result.get('table1')
+                table2 = result.get('table2')
+                columns = result.get('columns')
+                diffs = result.get('diffs')
+                diff_cells = set((d['row']-1, d['column']) for d in diffs)
         except Exception as e:
-            diff = f"Error: {e}"
-    return render_template_string(HTML, diff=diff)
+            diff_error = f"Error: {e}"
+    return render_template_string(HTML, table1=table1, table2=table2, columns=columns, diffs=diffs, diff_cells=diff_cells, diff_error=diff_error)
 
 if __name__ == '__main__':
     app.run(port=8000, debug=True)
