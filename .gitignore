@@ -5,3 +5,4 @@ __pycache__/
 backend/uploads/
 .env
 .env.*
+.vscode
