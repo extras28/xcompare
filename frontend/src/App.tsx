@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import styled from "styled-components";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
@@ -7,7 +7,11 @@ import { Toast } from "./components/Toast";
 import { UploadBox } from "./components/UploadBox";
 import { compareFiles } from "./services/api";
 import { GlobalStyles } from "./styles/GlobalStyles";
+import { useToast } from "./hooks/useToast";
+import { useTheme } from "./hooks/useTheme";
+import { useResponsiveSidebar } from "./hooks/useResponsiveSidebar";
 
+// Styled Components
 const AppContainer = styled.div`
     display: flex;
     height: 100vh;
@@ -16,13 +20,18 @@ const AppContainer = styled.div`
     background: var(--bs-body-bg);
 `;
 
-const MainContent = styled.div`
+const MainContent = styled.div<{ isBlurred: boolean; sidebarVisible: boolean; isMobile: boolean }>`
     display: flex;
     flex-direction: column;
     height: 100vh;
     min-width: 0;
-    flex: 1 1 0%;
+    flex: 1;
     background: var(--bs-body-bg);
+    filter: ${(props) => (props.isBlurred ? "blur(2px) grayscale(0.2)" : "none")};
+    pointer-events: ${(props) => (props.isBlurred ? "none" : "auto")};
+    padding-left: ${(props) => (!props.isMobile && props.sidebarVisible ? "280px" : "0")};
+    width: 100%;
+    transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
     main {
         padding: 24px;
@@ -32,50 +41,28 @@ const MainContent = styled.div`
     }
 `;
 
-interface Toast {
-    id: string;
-    message: string;
-}
+const LoadingSpinner = styled.div`
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+
+    i {
+        color: var(--bs-primary);
+    }
+`;
 
 function App() {
-    const [sidebarVisible, setSidebarVisible] = useState(window.innerWidth >= 992);
-    const [isDarkMode, setIsDarkMode] = useState(
-        localStorage.getItem("theme") === "dark" || window.matchMedia("(prefers-color-scheme: dark)").matches
-    );
+    // Custom Hooks
+    const { toasts, showToast, removeToast } = useToast();
+    const { isDarkMode, toggleTheme } = useTheme();
+    const { sidebarVisible, toggleSidebar, isMobile } = useResponsiveSidebar();
+
+    // State
     const [comparisonData, setComparisonData] = useState(null);
-    const [toasts, setToasts] = useState<Toast[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    useEffect(() => {
-        document.documentElement.setAttribute("data-bs-theme", isDarkMode ? "dark" : "light");
-        localStorage.setItem("theme", isDarkMode ? "dark" : "light");
-    }, [isDarkMode]);
-
-    // Responsive: ẩn sidebar khi resize nhỏ hơn 992px
-    useEffect(() => {
-        const handleResize = () => {
-            if (window.innerWidth < 992) {
-                setSidebarVisible(false);
-            } else {
-                setSidebarVisible(true);
-            }
-        };
-        window.addEventListener("resize", handleResize);
-        return () => window.removeEventListener("resize", handleResize);
-    }, []);
-
-    const showToast = (message: string) => {
-        const id = Math.random().toString(36).substr(2, 9);
-        setToasts((prev) => [...prev, { id, message }]);
-        setTimeout(() => {
-            removeToast(id);
-        }, 5000);
-    };
-
-    const removeToast = (id: string) => {
-        setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    };
-
+    // Handlers
     const handleFileSelect = async (files: { file1: File; file2: File }) => {
         setIsLoading(true);
         try {
@@ -88,41 +75,43 @@ function App() {
         }
     };
 
+    const handleReset = () => {
+        setComparisonData(null);
+    };
+
+    // Render helpers
+    const renderMainContent = () => {
+        if (isLoading) {
+            return (
+                <LoadingSpinner>
+                    <i className="fa-solid fa-spinner fa-spin fa-2x"></i>
+                </LoadingSpinner>
+            );
+        }
+
+        if (comparisonData) {
+            return <ComparisonTable data={comparisonData} onReset={handleReset} />;
+        }
+
+        return <UploadBox onFileSelect={handleFileSelect} />;
+    };
+
     return (
         <AppContainer>
             <GlobalStyles />
             <Toast toasts={toasts} onClose={removeToast} />
 
-            <Sidebar
-                isVisible={sidebarVisible}
-                onToggle={() => setSidebarVisible(!sidebarVisible)}
-                overlayMode={window.innerWidth < 992}
-            />
+            <Sidebar isVisible={sidebarVisible} onToggle={toggleSidebar} overlayMode={isMobile} />
 
-            <MainContent
-                style={{
-                    filter: sidebarVisible && window.innerWidth < 992 ? "blur(2px) grayscale(0.2)" : undefined,
-                    pointerEvents: sidebarVisible && window.innerWidth < 992 ? "none" : undefined,
-                }}
-            >
+            <MainContent isBlurred={sidebarVisible && isMobile} sidebarVisible={sidebarVisible} isMobile={isMobile}>
                 <Header
-                    onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
-                    onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+                    onToggleSidebar={toggleSidebar}
+                    onToggleTheme={toggleTheme}
                     isDarkMode={isDarkMode}
                     isSidebarVisible={sidebarVisible}
                 />
 
-                <main className="flex-grow-1 d-flex flex-column">
-                    {isLoading ? (
-                        <div className="d-flex justify-content-center align-items-center h-100">
-                            <i className="fa-solid fa-spinner fa-spin fa-2x"></i>
-                        </div>
-                    ) : comparisonData ? (
-                        <ComparisonTable data={comparisonData} />
-                    ) : (
-                        <UploadBox onFileSelect={handleFileSelect} showToast={showToast} />
-                    )}
-                </main>
+                <main className="flex-grow-1 d-flex flex-column">{renderMainContent()}</main>
             </MainContent>
         </AppContainer>
     );

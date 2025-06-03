@@ -1,9 +1,19 @@
 import React from "react";
 import styled from "styled-components";
+import { Button } from "react-bootstrap";
+import { ExcelTable } from "./ExcelTable";
+import { DiffList } from "./DiffList";
 
 const ComparisonTableWrapper = styled.div`
     flex: 1;
     min-width: 0;
+
+    .content-header {
+        color: var(--bs-emphasis-color);
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 16px;
+    }
 
     .compare-row {
         display: flex;
@@ -23,86 +33,50 @@ const ComparisonTableWrapper = styled.div`
     .card {
         background-color: var(--bs-tertiary-bg);
         border: 1px solid var(--bs-border-color);
+        height: 100%;
+    }
+
+    .card-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--bs-border-color);
+        font-weight: 600;
+
+        &.bg-primary {
+            background-color: var(--bs-primary) !important;
+        }
+
+        &.bg-success {
+            background-color: var(--bs-success) !important;
+        }
+    }
+
+    .card-body {
+        padding: 8px;
+        height: calc(100% - 49px); /* 49px is header height */
     }
 
     .excel-table-wrapper {
+        height: 100%;
         max-height: 500px;
-        overflow: auto;
-        background-color: var(--bs-tertiary-bg);
-    }
-
-    .excel-table {
-        border-collapse: collapse;
-        font-size: 13px;
-        width: 100%;
-    }
-
-    .excel-table th,
-    .excel-table td {
-        border: 1px solid var(--bs-border-color);
-        padding: 4px 8px;
-        max-width: 200px;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
+`;
 
-    .excel-table thead th {
-        background-color: var(--bs-secondary-bg);
-        font-weight: 600;
-        color: var(--bs-emphasis-color);
-        position: sticky;
-        top: 0;
-        z-index: 1;
-    }
+const HeaderContainer = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+`;
 
-    .diff-cell {
-        position: relative;
-    }
+const BackButton = styled(Button)`
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
 
-    [data-bs-theme="light"] {
-        .card-header.bg-primary {
-            background-color: var(--bs-primary) !important;
-        }
-
-        .card-header.bg-success {
-            background-color: var(--bs-success) !important;
-        }
-
-        .diff-cell {
-            background-color: #ffebee;
-            color: #c62828;
-        }
-
-        .excel-table td {
-            color: var(--bs-body-color);
-        }
-    }
-
-    [data-bs-theme="dark"] {
-        .card-header.bg-primary {
-            background-color: var(--bs-primary) !important;
-        }
-
-        .card-header.bg-success {
-            background-color: var(--bs-success) !important;
-        }
-
-        .diff-cell {
-            background-color: #311b1b;
-            color: #ff8a80;
-        }
-
-        .excel-table td {
-            color: var(--bs-body-color);
-        }
-    }
-
-    .content-header {
-        color: var(--bs-emphasis-color);
-        font-size: 24px;
-        font-weight: 600;
-        margin-bottom: 16px;
+    i {
+        font-size: 1rem;
     }
 `;
 
@@ -112,106 +86,57 @@ interface ComparisonResult {
     table2: Record<string, string>[];
     fileName1: string;
     fileName2: string;
-    diffs: {
+    diffs: Array<{
         row: number;
         column: string;
         value1: string;
         value2: string;
-    }[];
+    }>;
 }
 
 interface ComparisonTableProps {
     data: ComparisonResult;
+    onReset: () => void;
 }
 
-export const ComparisonTable: React.FC<ComparisonTableProps> = ({ data }) => {
-    const diffCells = new Set(data.diffs.map((d) => `${d.row - 1},${d.column}`));
+export const ComparisonTable: React.FC<ComparisonTableProps> = ({ data, onReset }) => {
+    const diffCells = React.useMemo(() => new Set(data.diffs.map((d) => `${d.row - 1},${d.column}`)), [data.diffs]);
 
     return (
         <ComparisonTableWrapper>
-            <div className="content-header">Kết quả so sánh</div>
-            <div className="mt-2">
-                <b>Chi tiết các ô khác nhau:</b>
-            </div>
-            <ul style={{ fontSize: "13px" }}>
-                {data.diffs.map((d, i) => (
-                    <li key={i}>
-                        Dòng {d.row}, cột '{d.column}': File 1 = '{d.value1}', File 2 = '{d.value2}'
-                    </li>
-                ))}
-            </ul>
+            <HeaderContainer>
+                <div className="content-header">Kết quả so sánh</div>
+                <BackButton variant="outline-primary" onClick={onReset}>
+                    <i className="fa-solid fa-arrow-rotate-left"></i>
+                    So sánh file khác
+                </BackButton>
+            </HeaderContainer>
 
-            <div className="compare-row mt-3">
+            <DiffList diffs={data.diffs} />
+
+            <div className="compare-row">
                 <div className="compare-col">
-                    <div className="card shadow-sm mb-3">
+                    <div className="card shadow-sm">
                         <div className="card-header bg-primary text-white">
                             <b>{data.fileName1}</b>
                         </div>
-                        <div className="card-body p-2 excel-table-wrapper">
-                            <table className="excel-table w-100">
-                                <thead>
-                                    <tr>
-                                        {data.columns.map((col) => (
-                                            <th key={col}>{col}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.table1.map((row, rowIdx) => (
-                                        <tr key={rowIdx}>
-                                            {data.columns.map((col) => {
-                                                const isDiff = diffCells.has(`${rowIdx},${col}`);
-                                                return (
-                                                    <td
-                                                        key={col}
-                                                        className={isDiff ? "diff-cell" : ""}
-                                                        title={row[col]}
-                                                    >
-                                                        {row[col]}
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                        <div className="card-body">
+                            <div className="excel-table-wrapper">
+                                <ExcelTable columns={data.columns} data={data.table1} diffCells={diffCells} />
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <div className="compare-col">
-                    <div className="card shadow-sm mb-3">
+                    <div className="card shadow-sm">
                         <div className="card-header bg-success text-white">
                             <b>{data.fileName2}</b>
                         </div>
-                        <div className="card-body p-2 excel-table-wrapper">
-                            <table className="excel-table w-100">
-                                <thead>
-                                    <tr>
-                                        {data.columns.map((col) => (
-                                            <th key={col}>{col}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.table2.map((row, rowIdx) => (
-                                        <tr key={rowIdx}>
-                                            {data.columns.map((col) => {
-                                                const isDiff = diffCells.has(`${rowIdx},${col}`);
-                                                return (
-                                                    <td
-                                                        key={col}
-                                                        className={isDiff ? "diff-cell" : ""}
-                                                        title={row[col]}
-                                                    >
-                                                        {row[col]}
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                        <div className="card-body">
+                            <div className="excel-table-wrapper">
+                                <ExcelTable columns={data.columns} data={data.table2} diffCells={diffCells} />
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -3,20 +3,19 @@ import styled from "styled-components";
 import { useClickOutside } from "../hooks/useClickOutside";
 
 const SidebarWrapper = styled.aside<{ isVisible: boolean; isOverlay: boolean }>`
-    min-width: ${(props) => (props.isOverlay ? "80vw" : "180px")};
-    max-width: ${(props) => (props.isOverlay ? "90vw" : "220px")};
-    width: ${(props) => (props.isOverlay ? "80vw" : "auto")};
+    min-width: ${(props) => (props.isOverlay ? "80vw" : "280px")};
+    max-width: ${(props) => (props.isOverlay ? "90vw" : "280px")};
+    width: ${(props) => (props.isOverlay ? "80vw" : "280px")};
     background: var(--bs-tertiary-bg);
-    // border-right: 1.5px solid var(--bs-border-color);
     box-shadow: ${(props) =>
         props.isOverlay ? "2px 0 16px rgba(25, 118, 210, 0.12)" : "2px 0 8px rgba(25, 118, 210, 0.04)"};
     height: 100vh;
     overflow: hidden;
     font-size: 13px;
-    position: ${(props) => (props.isOverlay ? "fixed" : "relative")};
+    position: fixed;
     left: 0;
     top: 0;
-    z-index: ${(props) => (props.isOverlay ? 2000 : 2)};
+    z-index: ${(props) => (props.isOverlay ? 2000 : 100)};
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
