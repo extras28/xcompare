@@ -133,7 +133,6 @@ HTML = '''
     }
     .content-header {
       position: sticky;
-      top: 48px; /* height of .header-bar */
       z-index: 99;
       background: var(--bs-body-bg);
       padding: 16px 16px 0 16px;
@@ -205,6 +204,78 @@ HTML = '''
     .excel-table-wrapper {
       overflow-x: auto;
       width: 100%;
+      max-height: 500px;
+      overflow: auto;
+    }
+    /* Loading spinner */
+    .fa-spin {
+      animation: fa-spin 1s infinite linear;
+    }
+    @keyframes fa-spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Excel table styles */
+    .excel-table-wrapper {
+      max-height: 500px;
+      overflow: auto;
+    }
+    
+    .excel-table {
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    
+    .excel-table th,
+    .excel-table td {
+      border: 1px solid #ddd;
+      padding: 4px 8px;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .excel-table th {
+      background: #f5f5f5;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    
+    .diff-cell {
+      background-color: #ffd7d7;
+      position: relative;
+    }
+    
+    .diff-cell:hover::after {
+      content: attr(title);
+      position: absolute;
+      left: 0;
+      top: 100%;
+      background: #333;
+      color: white;
+      padding: 5px;
+      border-radius: 3px;
+      z-index: 2;
+      white-space: normal;
+      max-width: 300px;
+    }
+
+    .compare-row {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .compare-col {
+      flex: 1;
+    }
+
+    @media (max-width: 768px) {
+      .compare-row {
+        flex-direction: column;
+      }
     }
     @media (min-width: 768px) {
       .compare-row {
@@ -361,9 +432,178 @@ HTML = '''
       background: #ffe066cc !important;
       color: #222 !important;
     }
+
+    /* Toast styles */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1060;
+    }
+    .toast {
+      background: var(--bs-danger);
+      color: white;
+      padding: 15px 25px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateX(120%) scale(0.9);
+      opacity: 0;
+      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+                  opacity 0.3s ease-in-out;
+      font-size: 13px;
+    }
+    .toast.show {
+      transform: translateX(0) scale(1);
+      opacity: 1;
+    }
+    .toast i {
+      font-size: 18px;
+      color: #fff;
+    }
+    .toast .close-btn {
+      background: none;
+      border: none;
+      color: white;
+      margin-left: auto;
+      padding: 0 5px;
+      font-size: 20px;
+      cursor: pointer;
+      opacity: 0.8;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .toast .close-btn:hover {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+    /* End toast styles */
   </style>
   <script>
     let sidebarVisible = true;
+    
+    // Handle form submission
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.querySelector('.upload-form');
+      form.addEventListener('submit', handleFormSubmit);
+    });
+
+    async function handleFormSubmit(event) {
+      event.preventDefault();
+      
+      const formData = new FormData(event.target);
+      const submitButton = event.target.querySelector('button[type="submit"]');
+      
+      // Validate file extensions
+      const file1 = formData.get('file1');
+      const file2 = formData.get('file2');
+      
+      if (!file1.name.toLowerCase().endsWith('.xlsx') || !file2.name.toLowerCase().endsWith('.xlsx')) {
+        showToast("Chỉ chấp nhận file Excel định dạng .xlsx. Vui lòng chọn đúng định dạng!");
+        return;
+      }
+
+      // Show loading state
+      submitButton.disabled = true;
+      submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
+      
+      try {
+        const response = await fetch('{{ BACKEND_URL }}', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.error) {
+          showToast(result.error);
+        } else {
+          updateComparisonResults(result);
+        }
+      } catch (error) {
+        showToast(`Lỗi: ${error.message}`);
+      } finally {
+        submitButton.disabled = false;
+        submitButton.innerHTML = 'So sánh';
+      }
+    }
+
+    function updateComparisonResults(data) {
+      const messagesDiv = document.querySelector('.messages');
+      
+      // Create results HTML
+      let html = `
+        <div class="content-header">Kết quả so sánh</div>
+        <div class="mt-2"><b>Chi tiết các ô khác nhau:</b></div>
+        <ul style="font-size:13px;">
+          ${data.diffs.map(d => `
+            <li>Dòng ${d.row}, cột '${d.column}': File 1 = '${d.value1}', File 2 = '${d.value2}'</li>
+          `).join('')}
+        </ul>
+      `;
+
+      // Add tables
+      const diffCells = new Set(data.diffs.map(d => `${d.row-1},${d.column}`));
+      
+      html += `
+        <div class="compare-row mt-3">
+          <div class="compare-col">
+            <div class="card shadow-sm mb-3">
+              <div class="card-header bg-primary text-white"><b>File 1</b></div>
+              <div class="card-body p-2 excel-table-wrapper">
+                <table class="excel-table w-100">
+                  <thead>
+                    <tr>
+                      ${data.columns.map(col => `<th>${col}</th>`).join('')}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${data.table1.map((row, rowIdx) => `
+                      <tr>
+                        ${data.columns.map(col => {
+                          const isDiff = diffCells.has(`${rowIdx},${col}`);
+                          return `<td class="${isDiff ? 'diff-cell' : ''}" title="${row[col]}">${row[col]}</td>`;
+                        }).join('')}
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="compare-col">
+            <div class="card shadow-sm mb-3">
+              <div class="card-header bg-success text-white"><b>File 2</b></div>
+              <div class="card-body p-2 excel-table-wrapper">
+                <table class="excel-table w-100">
+                  <thead>
+                    <tr>
+                      ${data.columns.map(col => `<th>${col}</th>`).join('')}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${data.table2.map((row, rowIdx) => `
+                      <tr>
+                        ${data.columns.map(col => {
+                          const isDiff = diffCells.has(`${rowIdx},${col}`);
+                          return `<td class="${isDiff ? 'diff-cell' : ''}" title="${row[col]}">${row[col]}</td>`;
+                        }).join('')}
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      messagesDiv.innerHTML = html;
+      messagesDiv.scrollTop = 0;
+    }
+
     function setTheme(theme) {
       document.documentElement.setAttribute('data-bs-theme', theme);
       localStorage.setItem('theme', theme);
@@ -401,7 +641,30 @@ HTML = '''
       // Đồng bộ icon X ở sidebar
       if (closeBtn) closeBtn.style.display = (window.innerWidth < 992 && sidebarVisible) ? 'inline-block' : 'none';
     }
+    // Toast functions
+    function showToast(message) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.innerHTML = `
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <span>${message}</span>
+        <button class="close-btn" onclick="closeToast(this.parentElement)">&times;</button>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => toast.classList.add('show'), 100);
+      setTimeout(() => closeToast(toast), 5000);
+    }
+
+    function closeToast(toast) {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }
+
     window.onload = function() {
+      // Reset form khi trang tải
+      document.querySelector('.upload-form').reset();
+      
       let theme = localStorage.getItem('theme');
       if (!theme) {
         theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -414,6 +677,11 @@ HTML = '''
         document.getElementById('sidebar').classList.add('sidebar-hidden');
         updateSidebarIcon();
       }
+
+      // Show toast if error exists
+      {% if show_toast and toast_message %}
+        showToast('{{ toast_message }}');
+      {% endif %}
     }
     window.onresize = function() {
       if (window.innerWidth < 992) {
@@ -431,6 +699,7 @@ HTML = '''
   </script>
 </head>
 <body>
+    <div id="toast-container" class="toast-container"></div>
     <div class="d-flex flex-row h-100 w-100">
       <aside id="sidebar" class="sidebar d-flex flex-column">
         <div class="sidebar-header d-flex align-items-center justify-content-between">
@@ -438,14 +707,14 @@ HTML = '''
           <button id="sidebar-close-btn" class="sidebar-toggle-btn d-md-none" type="button" onclick="toggleSidebar()" title="Đóng thanh công cụ" style="display:none;"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="flex-grow-1 p-4">
-          <form class="upload-form" method="post" enctype="multipart/form-data">
+          <form class="upload-form" method="post" enctype="multipart/form-data" onsubmit="handleFormSubmit(event)">
             <div class="mb-3">
               <label class="form-label">File 1</label>
-              <input class="form-control" type="file" name="file1" required>
+              <input class="form-control" type="file" name="file1" required accept=".xlsx">
             </div>
             <div class="mb-3">
               <label class="form-label">File 2</label>
-              <input class="form-control" type="file" name="file2" required>
+              <input class="form-control" type="file" name="file2" required accept=".xlsx">
             </div>
             <button class="btn btn-primary w-100" type="submit">So sánh</button>
           </form>
@@ -458,7 +727,9 @@ HTML = '''
           <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" onclick="toggleThemeBtn()"><i class="fa-solid fa-moon"></i></button>
         </div>
         <main class="flex-grow-1 d-flex flex-column">
-          <div class="content-header">Kết quả so sánh</div>
+          {% if (table1 and table2) or diff_error %}
+            <div class="content-header">Kết quả so sánh</div>
+          {% endif %}
           <div class="messages">
             {% if table1 and table2 %}
               <div class="mt-2"><b>Chi tiết các ô khác nhau:</b></div>
@@ -535,23 +806,57 @@ BACKEND_URL = 'http://localhost:5000/api/compare'
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    # Khởi tạo các biến là None cho GET request
     table1 = table2 = columns = diffs = diff_cells = diff_error = None
+    
+    # Chỉ xử lý khi có POST request
     if request.method == 'POST':
-        files = {'file1': request.files['file1'], 'file2': request.files['file2']}
-        try:
-            resp = requests.post(BACKEND_URL, files=files)
-            result = resp.json()
-            if 'error' in result:
-                diff_error = result['error']
-            else:
-                table1 = result.get('table1')
-                table2 = result.get('table2')
-                columns = result.get('columns')
-                diffs = result.get('diffs')
-                diff_cells = set((d['row']-1, d['column']) for d in diffs)
-        except Exception as e:
-            diff_error = f"Error: {e}"
-    return render_template_string(HTML, table1=table1, table2=table2, columns=columns, diffs=diffs, diff_cells=diff_cells, diff_error=diff_error)
+        file1 = request.files['file1']
+        file2 = request.files['file2']
+        
+        # Validate file extensions
+        if not (file1.filename.lower().endswith('.xlsx') and file2.filename.lower().endswith('.xlsx')):
+            diff_error = "Chỉ chấp nhận file Excel định dạng .xlsx. Vui lòng chọn đúng định dạng!"
+        else:
+            files = {'file1': file1, 'file2': file2}
+            try:
+                resp = requests.post(BACKEND_URL, files=files)
+                result = resp.json()
+                if 'error' in result:
+                    diff_error = result['error']
+                else:
+                    table1 = result.get('table1')
+                    table2 = result.get('table2')
+                    columns = result.get('columns')
+                    diffs = result.get('diffs')
+                    diff_cells = set((d['row']-1, d['column']) for d in diffs)
+            except Exception as e:
+                diff_error = f"Error: {e}"
+
+    # Add error toast if there's an error
+    if diff_error:
+        return render_template_string(HTML, 
+            table1=table1, 
+            table2=table2, 
+            columns=columns, 
+            diffs=diffs, 
+            diff_cells=diff_cells, 
+            diff_error=diff_error,
+            show_toast=True,
+            toast_message=diff_error
+        )
+
+    # Render template với các biến (sẽ là None cho GET request)
+    return render_template_string(HTML, 
+        table1=table1, 
+        table2=table2, 
+        columns=columns, 
+        diffs=diffs, 
+        diff_cells=diff_cells, 
+        diff_error=diff_error,
+        show_toast=False,
+        toast_message=None
+    )
 
 if __name__ == '__main__':
     app.run(port=8000, debug=True)

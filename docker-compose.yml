@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+    frontend:
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile
+        volumes:
+            - frontend_build:/app/dist
+        environment:
+            - NODE_ENV=production
+            - VITE_API_URL=http://backend:5000
+        networks:
+            - xcompare-network
+        depends_on:
+            - backend
+
+    backend:
+        build:
+            context: ./backend
+            dockerfile: Dockerfile
+        ports:
+            - "5000:5000"
+        environment:
+            - NODE_ENV=production
+        volumes:
+            - ./backend:/app
+            - /app/node_modules
+            - frontend_build:/app/public
+        restart: unless-stopped
+        networks:
+            - xcompare-network
+
+networks:
+    xcompare-network:
+        driver: bridge
+
+volumes:
+    frontend_build:

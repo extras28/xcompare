@@ -4,11 +4,50 @@
         {
             "type": "shell",
             "label": "Start Frontend",
-            "command": "python3 app.py",
+            "command": "cd frontend && npm run dev",
             "args": [],
             "group": "build",
             "isBackground": true,
-            "problemMatcher": []
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^.*$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*VITE.*",
+                    "endsPattern": "^.*ready in.*$"
+                }
+            }
+        },
+        {
+            "type": "shell",
+            "label": "Kill Port 5000",
+            "command": "lsof -ti:5000 | xargs -r kill -9",
+            "group": "none",
+            "presentation": {
+                "reveal": "never",
+                "echo": false,
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "type": "shell",
+            "label": "Start Backend",
+            "dependsOn": ["Kill Port 5000"],
+            "command": "cd backend && npm run dev",
+            "group": "build",
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^.*$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": "Server running on port.*"
+                }
+            }
         }
     ]
 }
